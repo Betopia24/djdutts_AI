@@ -5,9 +5,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 class Settings(BaseSettings):
-    GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
-    Model_name : str = os.getenv("Model_name", "")
-    pinecone_api: str = os.getenv("pinecone_api", "")
+    PINECONE_API_KEY: str = os.getenv("PINECONE_API_KEY", "")
+    GOOGLE_AI_API_KEY: str = os.getenv("GOOGLE_API_KEY", "")
 
 
 settings = Settings()

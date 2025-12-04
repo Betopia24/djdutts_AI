@@ -1,5 +1,7 @@
 fastapi
 uvicorn
+pinecone-client
+python-dotenv
+google-generativeai
 pydantic
-pydantic_settings
-pinecone
+pydantic-settings
