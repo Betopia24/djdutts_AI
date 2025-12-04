@@ -1,0 +1,5 @@
+fastapi
+uvicorn
+pydantic
+pydantic_settings
+pinecone
