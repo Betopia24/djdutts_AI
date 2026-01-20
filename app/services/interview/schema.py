@@ -1,10 +1,54 @@
-from typing import List, Optional
-from pydantic import BaseModel
+from typing import List, Optional, Dict, Any
+from pydantic import BaseModel, Field
 
 class InterviewQuestion(BaseModel):
     question: str
 
+class SourceReference(BaseModel):
+    """Reference to a source chunk used in snapshot generation"""
+    type: str
+    reference: str
+    score: float
+
+class RetrievalLog(BaseModel):
+    """Log entry for retrieval operations"""
+    timestamp: str
+    question: str
+    chunks_retrieved: int
+    top_score: float
+    retrieval_time_seconds: float
+    chunk_ids: Optional[List[str]] = None
+
+class SnapshotResponse(BaseModel):
+    """Enhanced response model for snapshot-based system"""
+    status: str
+    snapshot_type: str = Field(
+        description="Type: interview_based, hybrid, or full_fallback"
+    )
+    question: str
+    answer: str
+    chunks_used: int
+    top_score: float
+    ei_competencies: List[str]
+    sources: List[SourceReference]
+    confidence_level: str = Field(
+        description="Confidence: high, medium, or low"
+    )
+    retrieval_quality: str = Field(
+        description="Quality: excellent, partial, or none"
+    )
+    retrieval_log: Optional[Dict[str, Any]] = None
+    total_chunks_retrieved: Optional[int] = None
+    competency_tips: Optional[List[str]] = None
+    flagged: Optional[bool] = Field(
+        default=False,
+        description="True if full fallback (0 chunks)"
+    )
+    warning: Optional[str] = None
+    note: Optional[str] = None
+
 class InterviewResponse(BaseModel):
+    """Legacy response model - maintained for backward compatibility"""
     status: str
     question: str
     answer: Optional[str] = None
@@ -15,3 +59,12 @@ class InterviewResponse(BaseModel):
     related_questions: Optional[List[str]] = None
     competency_tips: Optional[List[str]] = None
     message: Optional[str] = None
+
+class RetrievalStatsResponse(BaseModel):
+    """Statistics about retrieval and snapshot generation"""
+    total_requests: int
+    successful_retrievals: int
+    high_quality_retrievals: int
+    retrieval_success_rate: float
+    high_quality_rate: float
+    zero_chunk_requests: int

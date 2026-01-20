@@ -1,0 +1,72 @@
+Modernizing a legacy
+
+Michael Stomberg
+Company: Meiller Group
+Role: CEO
+
+Since 1850, Meiller Group has steadily evolved its range of premium products, specifically within the construction and waste disposal. With CEO Michael Stomberg now at the helm, the company is entering a new era of digitization.
+
+When a company has endured for 175 years, it’s clear that there’s plenty of aspects that they’ve been doing incredibly well. And yet, as CEO of Meiller Group – whose diverse portfolio includes tipper trucks, elevator doors and real estate – Michael Stomberg explains, if you’re hoping to remain a key player for the next two centuries, that’s not enough of a reason to rest on your laurels.
+
+“The heritage that comes with a family-owned company makes both employees and management proud to serve,” he tells The CEO Magazine.
+
+“It has a flip side though, because if you’re very proud of what you’re doing, you sometimes may be lacking a degree of humility that you need.
+
+“Because it’s been great for generations, you might assume it’s going to automatically be great in the future. We’ve survived world wars, all kinds of crises, so there’s a confidence that it’s going to be OK.
+
+“But a downside is there’s no sense of urgency for things that need to change, not for the immediate survival of the company, but to take it to the next level.”
+
+A generational vision
+With a background in management consultancy and an impressive history in business leadership, including nearly 13 years at Freudenberg, and more than four years as CEO of Bauer Group, Stomberg brought with him specific industry knowledge as well as a plethora of experience at the helm of various companies.
+
+So when he stepped into the top job in October 2023 – having already been on the advisory board since March – Stomberg had plenty of ideas about how to ensure Meiller continued evolving and pushing the envelope going forward.
+
+As well as building core competencies in-house as much as possible to control quality and costs, Meiller is always striving to defend their position through innovation, not just market share.
+
+“We really are in a period of transition,” he says. “We can’t make our strategy dependent on only growth. It’s about making the best tippers for our customers. As a company, we need to continuously work on the innovation of our product to defend the prices and premium quality.”
+
+“We need to continuously work on the innovation of our product to defend the prices and premium quality.”
+
+While Stomberg believes that one of the strengths of legacy, family-owned businesses is that they tend to have a generational vision, rather than a quarterly vision, he also is adamant that there’s room to build on the heritage with modernization.
+
+“Our internal processes have to be just as excellent as our product,” he enthuses. “We really have to embrace change – and this sounds a bit cliche – but we need a little bit of a sense of urgency to this operational excellence.
+
+“Sometimes that is difficult because people say, ‘We’ve always been doing it this way, and it works.’ Yes, it works, but it would be more efficient if we do it another way.
+
+“To get there, it’s probably going to be less efficient in the short-term because people will make mistakes, but you have to trust that the transformation is worthwhile in the long-term.”
+
+Integrating new technology
+One such initiative includes the shift toward a more digitally supported workplace and streamlining of the SAP system – which is outdated with too many customizations, which has led to inefficiencies – and synchronizing internal processes to reduce lead times and working capital.
+
+“We went live with the new system at the beginning of the year, which was quite a struggle because as always, you test it, but never really know how it’s going to work when you put the full load on it,” Stomberg explains.
+
+“It takes a while to really understand what’s going on in the system as it’s all interconnected. We have to make a strong effort over the next year to clean up our data because getting the SAP running is one thing, but if the data is not up to date, if our plans and bill of material aren’t one hundred percent correct, if our prices and lead times for our suppliers aren’t up to date, then this whole automatic replenishment and synchronization will never work.”
+
+“As well as getting our SAP right, we’re also introducing a fine planning systematic APPDS system and manufacturing execution system.”
+
+With the goal of reducing working capital and lead times from 8–12 weeks to 3–4 weeks as part of their new strategy, Meiller is also exploring the implementation of AI.
+
+“It’s a huge area – and we don’t want to do AI for the sake of doing AI – but even things like using robots that pick one system, take out the data and put it into another system is something that I think we should do,” Stomberg says.
+
+“As well as getting our SAP right, we’re also introducing a fine planning systematic APPDS system and manufacturing execution system. These things have been very rudimentary in our old world because we’ve always focused more on delivering the product perfectly to the customer, rather than on how we get the supply chain moving perfectly internally.”
+
+Nurturing combined expertise
+Having a robust supplier network is vital for a business that relies on as many partners as Meiller does.
+
+“It’s always with this long-term business relationship in mind, not always looking back,” says Stomberg, who prioritizes a ‘better together’ approach. “For every individual supplier, you need unique, detailed discussions. It’s not one-size-fits-all.”
+
+By constructing plants near its major customers, Meiller ensures streamlined processes as well as a deeper level of intimacy within the ecosystem.
+
+“Our footprint has been defined by our customers, and we want to do the same with our suppliers to make sure that we have short distances to travel and can talk face-to-face. I think that’s really important,” he explains.
+
+“Our footprint has been defined by our customers, and we want to do the same with our suppliers.”
+
+While Meiller boasts a workforce whose specialized knowledge of their products and the industry as a whole is unparalleled, Stomberg is keen to expand that expertise so that it’s not just individuals who possess it, but the whole company. Indeed, some employees have been part of the Meiller family for over four decades.
+
+“This is both a blessing and a curse, because these people know exactly how it should be done,” he points out. “Despite all of the long-term heritage that we have and all of the knowledge in the heads of our employees, we have to move into a more systematic and digitally supported knowledge base.”
+
+While most processes are already documented and there is, of course, a framework in place, Stomberg says it’s more about creating maximum efficiency so that the highest quality is within reach the first time, and every time thereafter.
+
+“I’d love to have the next generation of Meiller employees stick around for another 40 years, but reality shows me that this is not the case,” he admits.
+
+“Younger generations are less loyal, they move from one company to another. In a way it’s sad, but I think it’s also a good thing, as it forces us to move the collective knowledge of the individuals into a collective system that all can access.”

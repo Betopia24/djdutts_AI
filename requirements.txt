@@ -1,7 +1,8 @@
 fastapi
 uvicorn
-pinecone-client
+faiss-cpu
 python-dotenv
-google-generativeai
+openai
 pydantic
 pydantic-settings
+numpy

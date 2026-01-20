@@ -1,0 +1,59 @@
+An AI model for healthcare
+
+Omri Yoffe
+Company: Vi
+Role: CEO
+
+CEO Omri Yoffe describes Vi as an “AI orchestrator” that integrates with healthcare systems to improve outcomes, drive innovation and ensure transparency. Now, he is setting his sights on unlocking innovation in areas like drug discovery and life sciences.
+
+
+Every day, billions upon billions of pieces of healthcare data are being generated across the world. From smartwatches to hospital visits and routine appointments, extremely valuable data is floating around the systems of healthcare firms. But how can these organizations actually use this data to create better health outcomes?
+
+Omri Yoffe, CEO of Vi, the AI platform for health businesses, believes he’s found the answer.
+
+“The way you should look at us is as an AI orchestrator that lives within your existing tech stack,” he tells The CEO Magazine.
+
+“You keep your data systems and operational systems, and we’ll look at the historical data of your enterprise to help the end patient or member to live healthy and longer.”
+
+With a laser focus on health, Vi took inspiration from innovative firms like Palantir and UiPath to unlock the power of enterprise AI models, productizing powerful data science capabilities across the full enterprise value chain. As a father of four children, Yoffe and his team see their work at Vi as critical to doing well for the world.
+
+Crowded ecosystem
+There’s no shortage of innovative businesses backed by AI promising to transform entire industries. Rising above this noise hasn’t been a challenge for Yoffe and the team at Vi, thanks to the unique client proposition.
+
+“We’re not competing with the AI of the world. We are the experts in productizing and operationalizing AI that will actually drive health and financial outcomes for enterprises,” he says.
+
+“We are the experts in productizing and operationalizing AI.”
+
+Seamlessness and speed are the hallmarks of Vi, with 82 different application programming interfaces (APIs) enabling a frictionless experience. In as little as two weeks, healthcare firms can start working with AI without the need to build a 50-person team and complete three years of R&D.
+
+When starting with new customers, Yoffe guarantees to deliver value and only asks to be paid for the money the partnership creates.
+
+“If we go into a pilot, we have a very high conversion rate of close to 98 percent,” he says. “It creates transparency for customers, but it has also helped us. Because of that model, we’re a reflection of the growth of our customers.”
+
+Transparency and explainability
+
+In Yoffe’s view, AI transparency and explainability are rapidly becoming the most important concepts of this century. His number one message to policymakers, politicians and business leaders is to make sure that whatever they do, transparency and explainability need to be embedded in AI models and products.
+“This is what Vi has been doing from day one. I think if we all do it, it won’t solve the problem, but it’ll be the foundation to do things well and identify the bad players versus the good players,” he says.
+
+Gathered over the past nine years, Vi has access to a huge amount of information about human behavior and the operational behavior of organizations, which can be applied without infringing on individual privacy or causing compliance issues.
+
+“We come into an organization and create what we call a warm start because we just know the business,” Yoffe explains. “It’s not only the models, it’s also the type of anonymized data that we bring to the table.”
+
+Multibillion-dollar market
+In the United States alone, healthcare accounts for close to 20 percent of GDP, illustrating the massive potential market for what Vi offers to its customers.
+
+“Our mission is health. As long as it’ll help humanity and civil society, we will be there,” Yoffe adds.
+
+Recording a bottom-line profit for more than five years and achieving year-on-year growth rates of over 120 percent, Vi is now looking to innovate in the area of drug discovery and pharma.
+
+“We’re touching less than one percent of the market – it’s our fastest growing market – this is something I’m very bullish on,” he says.
+
+“Whenever you have a new technology, like neural radar, it allows you to see more. With the new understanding, human beings make a giant leap forward. This is what Vi is doing in health.”
+
+Yoffe also sees an opportunity to play a connecting role and anonymized data router to support the increasing interconnectivity between healthcare firms, wellness direct-to-consumer brands and pharma.
+
+“We want to become the Switzerland connecting tissue between those verticals, keeping all data anonymous,” he says.
+
+Likening Vi services to a radar system, Yoffe sees the company as forming a type of neural radar system. While a radar can identify objects in the sky that the naked eye cannot, Vi gives healthcare firms the ability to view the data they need and make real improvements.
+
+“Whenever you have a new technology, like neural radar, it allows you to see more. With the new understanding, human beings make a giant leap forward. This is what Vi is doing in health,” he concludes.
