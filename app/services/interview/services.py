@@ -123,6 +123,34 @@ class interviewServicees:
             # Create new index on error
             self.index = faiss.IndexFlatIP(self.embedding_dimension)
     
+    def reset_index(self) -> Dict[str, Any]:
+        """Reset the FAISS index - clear all vectors and metadata"""
+        try:
+            old_count = self.index.ntotal
+            
+            # Create fresh index
+            self.index = faiss.IndexFlatIP(self.embedding_dimension)
+            self.metadata_store = {}
+            self.id_to_index = {}
+            self.index_to_id = {}
+            
+            # Delete saved files if they exist
+            if os.path.exists(f"{self.index_path}.index"):
+                os.remove(f"{self.index_path}.index")
+            if os.path.exists(self.metadata_path):
+                os.remove(self.metadata_path)
+            
+            logger.info(f"🗑️ Reset index: cleared {old_count} vectors")
+            
+            return {
+                "status": "success",
+                "message": f"Index reset successfully. Cleared {old_count} vectors.",
+                "vectors_cleared": old_count
+            }
+        except Exception as e:
+            logger.error(f"Error resetting index: {e}")
+            return {"status": "error", "message": str(e)}
+    
     def embed_text(self, text: str) -> List[float]:
         """Generate embeddings for text using OpenAI"""
         try:

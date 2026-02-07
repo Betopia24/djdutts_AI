@@ -37,6 +37,20 @@ async def interview_round(request: InterviewQuestion):
             detail=f"Error processing interview question: {str(e)}"
         )
 
+@router.post("/reset_index")
+async def reset_index():
+    """
+    Clear the FAISS index and metadata. Call this before re-loading interview files.
+    """
+    try:
+        result = interview_service.reset_index()
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error resetting index: {str(e)}"
+        )
+
 @router.post("/load_interview_files")
 async def load_interview_files():
     """
