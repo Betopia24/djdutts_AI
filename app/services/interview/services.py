@@ -11,6 +11,8 @@ import glob
 import logging
 from datetime import datetime
 from enum import Enum
+from dataclasses import dataclass
+from pathlib import Path
 
 load_dotenv()
 
@@ -21,11 +23,37 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+class OutputClass(Enum):
+    """Output classes determined by deterministic gating.
+    
+    These are decided BEFORE any LLM call based on hard rules.
+    LLM scoring cannot upgrade or override these classes.
+    EI Contract: REFUSED and FULL_BACKUP short-circuit before LLM generation.
+    """
+    PRIMARY = "primary"           # High-authority: ≥min thresholds met, bounded insight from evidence
+    HYBRID = "hybrid"             # Medium-authority: Partial data, bounded adjacent insight
+    FULL_BACKUP = "full_backup"   # Low-authority: Insufficient data, deterministic refusal/reframe
+    REFUSED = "refused"           # No authority: Hard refusal, short-circuit before LLM
+
 class SnapshotType(Enum):
-    """Types of snapshots based on retrieval results"""
+    """Types of snapshots based on retrieval results (legacy compatibility)"""
     INTERVIEW_BASED = "interview_based"  # ≥2 chunks
     HYBRID = "hybrid"  # 1 chunk or insufficient insight
     FULL_FALLBACK = "full_fallback"  # 0 chunks - FLAGGED
+
+@dataclass
+class GateDecision:
+    """Deterministic gate decision made BEFORE LLM call.
+    
+    This decision is final and cannot be upgraded by LLM scoring.
+    """
+    output_class: OutputClass
+    reason: str
+    allow_generation: bool
+    chunks_passed: int
+    unique_interviews: int
+    top_similarity: float
+    quality_metrics: Dict[str, Any]
 
 class interviewServicees:
     def __init__(self):
@@ -44,10 +72,24 @@ class interviewServicees:
         # Confidence threshold for vector search
         self.confidence_threshold = 0.7
         
+        # ========================================
+        # DETERMINISTIC GATING PARAMETERS (EI)
+        # These enforce authority boundaries BEFORE LLM
+        # ========================================
+        
+        # Gate thresholds - these determine output class
+        self.GATE_MIN_SIMILARITY_THRESHOLD = 0.30  # Minimum similarity score to consider relevant
+        self.GATE_MIN_CHUNK_COUNT_PRIMARY = 2      # Minimum chunks for PRIMARY authority
+        self.GATE_MIN_CHUNK_COUNT_HYBRID = 1       # Minimum chunks for HYBRID authority
+        self.GATE_MIN_UNIQUE_INTERVIEWS = 2        # Minimum unique interview sources for PRIMARY
+        
+        # Quality thresholds
+        self.GATE_HIGH_QUALITY_THRESHOLD = 0.50    # Score threshold for "high quality" chunk
+        
         # Retrieval tracking
         self.retrieval_log = []
-        self.min_chunks_for_interview_based = 2
-        self.min_score_for_sufficient_insight = 0.30  # Adjusted for real-world embedding similarity
+        self.min_chunks_for_interview_based = 2  # Legacy - kept for backward compatibility
+        self.min_score_for_sufficient_insight = 0.30  # Legacy
         self.min_retrieval_score = 0.15  # Minimum score to consider a chunk relevant
         
         # Initialize FAISS index and metadata
@@ -94,9 +136,24 @@ class interviewServicees:
             print(f"Error generating embedding: {e}")
             return [0.0] * self.embedding_dimension
     
-    def process_text_files_from_directory(self, directory_path: str = r"C:\project\djdutts\files\interview_2"):
-        """Process all text files from interview_2 directory and store in FAISS"""
+    def process_text_files_from_directory(self, directory_path: Optional[str] = None):
+        """Process all text files from interview_2 directory and store in FAISS.
+
+        Resolution order for `directory_path`:
+        1. Explicit argument
+        2. INTERVIEW_FILES_DIR environment variable
+        3. project-relative `files/interview_2` (recommended for local runs)
+        4. cwd `files/interview_2`
+        """
         try:
+            if directory_path is None:
+                directory_path = (
+                    os.getenv("INTERVIEW_FILES_DIR")
+                    or str(Path(__file__).resolve().parents[3] / "files" / "interview_2")
+                    or str(Path.cwd() / "files" / "interview_2")
+                )
+            directory_path = os.path.expanduser(str(directory_path))
+
             # Get all .txt files from the directory
             txt_files = glob.glob(os.path.join(directory_path, "*.txt"))
             
@@ -212,15 +269,39 @@ class interviewServicees:
         
         return parsed
     
-    def process_qa_dataset(self, json_file_path: str = None):
-        """Process and store Q&A dataset in FAISS"""
+    def process_qa_dataset(self, json_file_path: Optional[str] = None):
+        """Process and store Q&A dataset in FAISS
+
+        Resolves the dataset path from (in order): explicit arg, QA_DATASET_PATH env var,
+        project-relative `files/hr_interview_questions_dataset.json`, then cwd `files/`.
+        """
         try:
-            if json_file_path is None:
-                json_file_path = r"C:\project\djdutts\files\hr_interview_questions_dataset.json"
-            
-            if not os.path.exists(json_file_path):
-                return {"status": "error", "message": f"File not found: {json_file_path}"}
-            
+            # Candidate resolution (explicit > env var > project files/ > cwd files/)
+            candidates = [
+                json_file_path,
+                os.getenv("QA_DATASET_PATH"),
+                str(Path(__file__).resolve().parents[2] / "files" / "hr_interview_questions_dataset.json"),
+                str(Path.cwd() / "files" / "hr_interview_questions_dataset.json"),
+            ]
+
+            # Pick the first existing candidate
+            resolved = None
+            for p in candidates:
+                if not p:
+                    continue
+                p_str = os.path.expanduser(str(p))
+                if os.path.exists(p_str):
+                    resolved = p_str
+                    break
+
+            if resolved is None:
+                return {
+                    "status": "error",
+                    "message": f"File not found: {json_file_path or '(no path provided)'}; looked in: {candidates}"
+                }
+
+            json_file_path = resolved
+
             with open(json_file_path, 'r', encoding='utf-8') as file:
                 qa_data = json.load(file)
             
@@ -302,6 +383,116 @@ class interviewServicees:
             return "medium"
         else:
             return "hard"
+    
+    def _evaluate_deterministic_gate(self, chunks: List[Dict[str, Any]], user_question: str) -> GateDecision:
+        """DETERMINISTIC GATING: Decide output class BEFORE any LLM call.
+        
+        This is the authority boundary enforcement. The decision made here is FINAL
+        and cannot be upgraded by LLM scoring or any other mechanism.
+        
+        Rules:
+        1. Check minimum similarity threshold
+        2. Check minimum chunk count
+        3. Check unique interview count
+        4. Determine output class based on hard thresholds
+        
+        Returns:
+            GateDecision: Final, non-upgradeable decision about output class
+        """
+        logger.info(f"🚪 DETERMINISTIC GATE: Evaluating {len(chunks)} chunks")
+        
+        # Filter chunks by minimum similarity threshold
+        relevant_chunks = [
+            chunk for chunk in chunks 
+            if chunk['score'] >= self.GATE_MIN_SIMILARITY_THRESHOLD
+        ]
+        
+        if not relevant_chunks:
+            logger.warning(f"❌ GATE DECISION: REFUSED - No chunks meet min similarity {self.GATE_MIN_SIMILARITY_THRESHOLD}")
+            return GateDecision(
+                output_class=OutputClass.REFUSED,
+                reason=f"No chunks meet minimum similarity threshold ({self.GATE_MIN_SIMILARITY_THRESHOLD})",
+                allow_generation=False,  # REFUSED short-circuits before any LLM generation
+                chunks_passed=0,
+                unique_interviews=0,
+                top_similarity=chunks[0]['score'] if chunks else 0.0,
+                quality_metrics={
+                    'total_chunks_retrieved': len(chunks),
+                    'chunks_above_threshold': 0,
+                    'gate_threshold': self.GATE_MIN_SIMILARITY_THRESHOLD
+                }
+            )
+        
+        # Count unique interviews (for CEO interview chunks)
+        unique_interviews = set()
+        for chunk in relevant_chunks:
+            if chunk.get('type') == 'ceo_interview':
+                person = chunk.get('person', 'Unknown')
+                unique_interviews.add(person)
+        
+        chunks_passed = len(relevant_chunks)
+        unique_interview_count = len(unique_interviews)
+        top_similarity = relevant_chunks[0]['score'] if relevant_chunks else 0.0
+        
+        # Count high-quality chunks
+        high_quality_count = sum(
+            1 for chunk in relevant_chunks
+            if chunk['score'] >= self.GATE_HIGH_QUALITY_THRESHOLD
+        )
+        
+        quality_metrics = {
+            'total_chunks_retrieved': len(chunks),
+            'chunks_above_threshold': chunks_passed,
+            'high_quality_chunks': high_quality_count,
+            'unique_interviews': unique_interview_count,
+            'top_similarity': top_similarity,
+            'gate_similarity_threshold': self.GATE_MIN_SIMILARITY_THRESHOLD,
+            'high_quality_threshold': self.GATE_HIGH_QUALITY_THRESHOLD
+        }
+        
+        # DETERMINISTIC DECISION LOGIC
+        
+        # PRIMARY: High authority - multiple high-quality chunks from diverse sources
+        if (chunks_passed >= self.GATE_MIN_CHUNK_COUNT_PRIMARY and 
+            unique_interview_count >= self.GATE_MIN_UNIQUE_INTERVIEWS):
+            logger.info(f"✅ GATE DECISION: PRIMARY - {chunks_passed} chunks, {unique_interview_count} unique interviews")
+            return GateDecision(
+                output_class=OutputClass.PRIMARY,
+                reason=(f"Met PRIMARY thresholds: {chunks_passed} chunks (≥{self.GATE_MIN_CHUNK_COUNT_PRIMARY}), "
+                        f"{unique_interview_count} unique interviews (≥{self.GATE_MIN_UNIQUE_INTERVIEWS})"),
+                allow_generation=True,
+                chunks_passed=chunks_passed,
+                unique_interviews=unique_interview_count,
+                top_similarity=top_similarity,
+                quality_metrics=quality_metrics
+            )
+        
+        # HYBRID: Medium authority - some data available but below PRIMARY threshold
+        elif chunks_passed >= self.GATE_MIN_CHUNK_COUNT_HYBRID:
+            logger.info(f"⚠️ GATE DECISION: HYBRID - {chunks_passed} chunks, {unique_interview_count} unique interviews")
+            return GateDecision(
+                output_class=OutputClass.HYBRID,
+                reason=(f"Partial data: {chunks_passed} chunks (≥{self.GATE_MIN_CHUNK_COUNT_HYBRID}), "
+                        f"but below PRIMARY threshold ({unique_interview_count} interviews < {self.GATE_MIN_UNIQUE_INTERVIEWS})"),
+                allow_generation=True,
+                chunks_passed=chunks_passed,
+                unique_interviews=unique_interview_count,
+                top_similarity=top_similarity,
+                quality_metrics=quality_metrics
+            )
+        
+        # FULL_BACKUP: Low authority - insufficient data (deterministic refusal/reframe)
+        else:
+            logger.warning(f"❌ GATE DECISION: FULL_BACKUP - {chunks_passed} chunks (< {self.GATE_MIN_CHUNK_COUNT_HYBRID})")
+            return GateDecision(
+                output_class=OutputClass.FULL_BACKUP,
+                reason=f"Insufficient data for insight: {chunks_passed} chunks (< {self.GATE_MIN_CHUNK_COUNT_HYBRID}). Deterministic refusal/reframe.",
+                allow_generation=False,  # FULL_BACKUP means refuse/reframe, no LLM strategy generation
+                chunks_passed=chunks_passed,
+                unique_interviews=unique_interview_count,
+                top_similarity=top_similarity,
+                quality_metrics=quality_metrics
+            )
     
     def _mandatory_retrieval(self, user_question: str, top_k: int = 5) -> Dict[str, Any]:
         """MANDATORY retrieval from vector database with comprehensive logging.
@@ -417,14 +608,16 @@ class interviewServicees:
         """Create Interview-Based Snapshot from ≥2 retrieved chunks.
         
         Primary intelligence source: Interview dataset.
-        AI role: None (pure retrieval-based response).
+        AI role: Bounded adjacent insight synthesis only.
+        
+        CRITICAL: chunks parameter contains ONLY evidence that passed the gate.
         """
-        logger.info(f"📊 Creating INTERVIEW-BASED Snapshot ({len(chunks)} chunks)")
+        logger.info(f"📊 Creating INTERVIEW-BASED Snapshot from Evidence Pack ({len(chunks)} passed chunks)")
         
         try:
-            # Build context from multiple interview chunks
+            # Build Evidence Pack from passed chunks only (already filtered by caller)
             interview_context = []
-            for i, chunk in enumerate(chunks[:5], 1):  # Use top 5 chunks
+            for i, chunk in enumerate(chunks[:5], 1):  # Use top 5 from Evidence Pack
                 if chunk['type'] == 'ceo_interview':
                     interview_context.append(
                         f"[Interview {i}] {chunk['person']} ({chunk['role']} at {chunk['company']}):\n"
@@ -442,33 +635,34 @@ class interviewServicees:
             
             context_str = "\n\n".join(interview_context)
             
-            # Synthesis prompt - STRICTLY interview-based
-            prompt = f"""You are synthesizing leadership insights from REAL executive interviews.
+            # Synthesis prompt - STRICTLY evidence-based bounded insight
+            prompt = f"""You are synthesizing leadership insights from REAL executive interviews to provide bounded adjacent insight.
 
 User Question: {user_question}
 
-RETRIEVED INTERVIEW INSIGHTS:
+EVIDENCE PACK (Passed Gate):
 {context_str}
 
 CRITICAL INSTRUCTIONS - VIOLATION WILL RESULT IN FAILURE:
-1. ONLY use information explicitly stated in the retrieved interviews above
-2. ABSOLUTELY FORBIDDEN: Adding facts, context, or knowledge about countries, regions, industries, cultures, or situations NOT explicitly mentioned in the interviews
-3. If the question mentions specifics (e.g., "in Bangladesh", "in healthcare", "with AI") that are NOT in the interviews:
+1. ONLY use information explicitly stated in the evidence pack above
+2. ABSOLUTELY FORBIDDEN: Adding facts, context, or knowledge about countries, regions, industries, cultures, or situations NOT explicitly mentioned in the evidence
+3. If the question mentions specifics (e.g., "in Bangladesh", "in healthcare", "with AI") that are NOT in the evidence:
    - DO NOT attempt to connect the executive's insights to that specific context
    - DO NOT make statements like "In Bangladesh..." or "In the healthcare sector..." 
-   - Instead, acknowledge: "The interviews don't address [specific context], but executives share these relevant principles..."
+   - Instead, acknowledge: "The evidence doesn't address [specific context], but executives share these relevant principles..."
 4. Synthesize insights from multiple sources when available
 5. Cite specific executives/sources when relevant - use their actual words
-6. Maintain the authentic voice and wisdom from the interviews
-7. If you find yourself typing information you didn't read in the interviews above, STOP
+6. Maintain the authentic voice and wisdom from the evidence
+7. If you find yourself typing information you didn't read in the evidence above, STOP
 8. Structure the response clearly with key insights
+9. Frame as bounded adjacent insight or refusal/reframe based on evidence
 
-Provide a comprehensive response (200-400 words) using ONLY what these executives actually said:"""
+Provide a comprehensive response (200-400 words) using ONLY what the evidence contains:"""
             
             response = self.openai_client.chat.completions.create(
                 model=self.generation_model,
                 messages=[
-                    {"role": "system", "content": "You are an expert at synthesizing leadership insights from executive interviews."},
+                    {"role": "system", "content": "You are an expert at synthesizing bounded adjacent insights from executive interview evidence."},
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.7,
@@ -509,13 +703,15 @@ Provide a comprehensive response (200-400 words) using ONLY what these executive
     def _create_hybrid_snapshot(self, user_question: str, chunks: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Create Hybrid Snapshot from 1 chunk OR insufficient insight.
         
-        Interview-First: Start with retrieved chunk(s)
-        AI-Completed: Fill structural gaps only
+        Evidence-First: Start with passed chunk(s)
+        Bounded Insight: Provide adjacent insight based on evidence only
+        
+        CRITICAL: chunks parameter contains ONLY evidence that passed the gate.
         """
-        logger.info(f"🔀 Creating HYBRID Snapshot ({len(chunks)} chunks - insufficient insight)")
+        logger.info(f"🔀 Creating HYBRID Snapshot from Evidence Pack ({len(chunks)} passed chunks)")
         
         try:
-            # Build limited context
+            # Build limited Evidence Pack context
             interview_context = ""
             if chunks:
                 chunk = chunks[0]
@@ -536,29 +732,30 @@ Provide a comprehensive response (200-400 words) using ONLY what these executive
                         f"Relevance Score: {chunk['score']:.3f}"
                     )
             
-            # Hybrid prompt - Interview-First, AI-Complete structural gaps
-            prompt = f"""You are creating a HYBRID response using limited interview data.
+            # Hybrid prompt - Evidence-First, Bounded Adjacent Insight
+            prompt = f"""You are creating a HYBRID response using limited evidence to provide bounded adjacent insight.
 
 User Question: {user_question}
 
-{interview_context if interview_context else "NO INTERVIEW DATA AVAILABLE"}
+{interview_context if interview_context else "NO EVIDENCE AVAILABLE IN PACK"}
 
 CRITICAL INSTRUCTIONS:
-1. START with the interview insight above (if available) - state what the executive actually said
+1. START with the evidence above (if available) - state what the executive actually said
 2. DO NOT fabricate or add details about the executive's context that aren't explicitly mentioned
-3. Build upon the executive's wisdom/experience with general frameworks only
-4. AI may ONLY complete structural gaps (general examples, universal frameworks, application tips)
-5. DO NOT add specific context about industries, countries, or situations NOT mentioned in the interview
-6. Clearly distinguish between interview content and supplementary guidance
-7. If the question asks about specifics not in the interview, acknowledge: "While the interview doesn't address [X] specifically, the executive shares relevant principles..."
+3. Build upon the executive's wisdom/experience with general frameworks only as bounded adjacent insight
+4. You may ONLY provide bounded insight adjacent to the evidence (general principles, universal frameworks, application approaches)
+5. DO NOT add specific context about industries, countries, or situations NOT mentioned in the evidence
+6. Clearly distinguish between evidence content and bounded adjacent insight
+7. If the question asks about specifics not in the evidence, acknowledge: "While the evidence doesn't address [X] specifically, the executive shares relevant principles..."
 8. Keep response practical and grounded (150-300 words)
+9. Frame as refusal/reframe if evidence is too weak
 
-Provide a hybrid response that honors what was actually said in the interview:"""
+Provide a hybrid response that honors what was actually in the evidence pack:"""
             
             response = self.openai_client.chat.completions.create(
                 model=self.generation_model,
                 messages=[
-                    {"role": "system", "content": "You are an expert at combining interview insights with practical guidance."},
+                    {"role": "system", "content": "You are an expert at providing bounded adjacent insight based on executive interview evidence."},
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.7,
@@ -590,71 +787,17 @@ Provide a hybrid response that honors what was actually said in the interview:""
                 ] if chunks else [],
                 "confidence_level": "medium",
                 "retrieval_quality": "partial",
-                "note": "Interview-first response with AI structural completion"
+                "note": "Evidence-first response with bounded adjacent insight"
             }
             
         except Exception as e:
             logger.error(f"Error creating hybrid snapshot: {e}")
             raise
     
-    def _create_full_fallback_snapshot(self, user_question: str) -> Dict[str, Any]:
-        """Create Full Fallback Snapshot when 0 chunks retrieved.
-        
-        ⚠️ FLAGGED: No interview data available.
-        Pure AI generation - must be clearly marked.
-        """
-        logger.warning(f"⚠️ Creating FULL FALLBACK Snapshot (0 chunks - FLAGGED)")
-        
-        try:
-            # Fallback prompt with clear warning
-            prompt = f"""⚠️ NO INTERVIEW DATA AVAILABLE - PURE AI RESPONSE ⚠️ in our executive database.
-
-User Question: {user_question}
-
-CRITICAL INSTRUCTIONS:
-1. Start by clearly stating: "Our executive interview database doesn't contain relevant insights for this question."
-2. Provide thoughtful, general business guidance based on best practices
-3. Use general frameworks (STAR method, EI principles) when appropriate
-4. Keep it professional and business-appropriate
-5. DO NOT fabricate executive quotes or specific company examples
-6. Acknowledge this is general guidance, not insights from real executives
-7. Length: 150-250 words
-
-Provide a helpful, honest0 words
-
-Provide a helpful fallback response:"""
-            
-            response = self.openai_client.chat.completions.create(
-                model=self.generation_model,
-                messages=[
-                    {"role": "system", "content": "You are a professional interview coach providing general guidance."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.7,
-                max_tokens=350
-            )
-            
-            ei_competency = self._categorize_ei_competency(user_question, "")
-            
-            return {
-                "status": "success",
-                "snapshot_type": SnapshotType.FULL_FALLBACK.value,
-                "question": user_question,
-                "answer": response.choices[0].message.content,
-                "chunks_used": 0,
-                "top_score": 0.0,
-                "ei_competencies": [ei_competency],
-                "sources": [],
-                "confidence_level": "low",
-                "retrieval_quality": "none",
-                "flagged": True,
-                "warning": "⚠️ No interview data available - pure AI fallback",
-                "note": "Consider expanding interview database or refining query"
-            }
-            
-        except Exception as e:
-            logger.error(f"Error creating fallback snapshot: {e}")
-            raise
+    # REMOVED: _create_full_fallback_snapshot
+    # Per EI contract, FULL_BACKUP must deterministically refuse/reframe, NOT generate with LLM.
+    # When output_class="refused" or "full_backup", the system returns deterministically
+    # without invoking LLM for strategy generation.
     
     def _generate_fallback_answer(self, user_question: str) -> Dict[str, Any]:
         """Generate answer using OpenAI when no relevant match found"""
@@ -700,64 +843,150 @@ Provide a helpful fallback response:"""
                 "confidence_score": 0.1
             }
     
-    def interview_round(self, user_question: str) -> Dict[str, Any]:
-        """Main interview function with MANDATORY retrieval and snapshot logic.
+    def interview_round(self, user_question: str, enable_llm_scoring: bool = False) -> Dict[str, Any]:
+        """Main interview function with DETERMINISTIC GATING enforcement.
         
-        FLOW:
+        CRITICAL FLOW (EI Architecture):
         1. MANDATORY retrieval from vector database (always logged)
-        2. Determine snapshot type based on chunks:
-           - ≥2 chunks → Interview-Based Snapshot
-           - 1 chunk OR insufficient insight → Hybrid Snapshot
-           - 0 chunks → Full Fallback Snapshot (FLAGGED)
-        3. Generate appropriate snapshot
-        4. Return comprehensive response
+        2. DETERMINISTIC GATE evaluation (decides output class BEFORE LLM)
+        3. Optional LLM evidence scoring (ONLY if enabled, AFTER gate, CANNOT upgrade class)
+        4. Generate snapshot based on gate decision
+        5. Return comprehensive response
         
-        NO SNAPSHOT MAY BYPASS RETRIEVAL.
+        The gate decision is FINAL and AUDITABLE. LLM cannot override it.
+        
+        Args:
+            user_question: The question to answer
+            enable_llm_scoring: If True, run optional LLM scoring AFTER gate (cannot upgrade class)
+        
+        Returns:
+            Dict with snapshot, gate decision, and optional LLM scores
         """
         logger.info(f"🎯 Starting interview_round for question: '{user_question[:100]}...'")
+        logger.info(f"🔧 LLM evidence scoring: {'ENABLED' if enable_llm_scoring else 'DISABLED'}")
         
         try:
+            # ========================================
             # STEP 1: MANDATORY RETRIEVAL (ALWAYS EXECUTED AND LOGGED)
+            # ========================================
             retrieval_result = self._mandatory_retrieval(user_question, top_k=5)
             chunks = retrieval_result['chunks']
             total_chunks = retrieval_result['total_chunks']
             
             logger.info(f"📦 Retrieved {total_chunks} chunks")
             
-            # STEP 2: DETERMINE SNAPSHOT TYPE
+            # ========================================
+            # STEP 2: DETERMINISTIC GATE (AUTHORITY BOUNDARY)
+            # This decision is FINAL - made BEFORE any LLM call
+            # ========================================
+            gate_decision = self._evaluate_deterministic_gate(chunks, user_question)
+            
+            logger.info(
+                f"🚪 GATE DECISION FINAL: {gate_decision.output_class.value.upper()} | "
+                f"Reason: {gate_decision.reason}"
+            )
+            
+            # ========================================
+            # STEP 3: OPTIONAL LLM EVIDENCE SCORING (POST-GATE ONLY)
+            # Can only run AFTER gate decision
+            # CANNOT upgrade the class or override refusal
+            # ========================================
+            llm_evidence_scores = None
+            if enable_llm_scoring and gate_decision.allow_generation and gate_decision.chunks_passed > 0:
+                logger.info("🤖 Running optional LLM evidence scoring (post-gate)")
+                llm_evidence_scores = self._score_evidence_quality_with_llm(
+                    user_question, chunks[:gate_decision.chunks_passed]
+                )
+                logger.info(f"📊 LLM Evidence Scores: {llm_evidence_scores}")
+            
+            # ========================================
+            # STEP 4: GENERATE SNAPSHOT BASED ON GATE DECISION
+            # Gate decision determines which generator to use
+            # ========================================
             snapshot_response = None
             
-            if total_chunks >= self.min_chunks_for_interview_based:
-                # Check if chunks have sufficient insight
-                high_quality_chunks = [
+            if gate_decision.output_class == OutputClass.PRIMARY:
+                # HIGH AUTHORITY - Interview-based snapshot
+                # Filter to only chunks that passed the gate
+                passed_chunks = [
                     chunk for chunk in chunks 
-                    if chunk['score'] >= self.min_score_for_sufficient_insight
-                ]
+                    if chunk['score'] >= self.GATE_MIN_SIMILARITY_THRESHOLD
+                ][:gate_decision.chunks_passed]
                 
-                if len(high_quality_chunks) >= 2:
-                    # ≥2 high-quality chunks → INTERVIEW-BASED SNAPSHOT
-                    snapshot_response = self._create_interview_based_snapshot(
-                        user_question, chunks
-                    )
-                else:
-                    # ≥2 chunks but insufficient quality → HYBRID SNAPSHOT
-                    snapshot_response = self._create_hybrid_snapshot(
-                        user_question, chunks
-                    )
-            
-            elif total_chunks == 1:
-                # 1 chunk → HYBRID SNAPSHOT
+                snapshot_response = self._create_interview_based_snapshot(
+                    user_question, passed_chunks
+                )
+                snapshot_response['output_class'] = OutputClass.PRIMARY.value
+                
+            elif gate_decision.output_class == OutputClass.HYBRID:
+                # MEDIUM AUTHORITY - Hybrid snapshot
+                passed_chunks = [
+                    chunk for chunk in chunks 
+                    if chunk['score'] >= self.GATE_MIN_SIMILARITY_THRESHOLD
+                ][:gate_decision.chunks_passed]
+                
                 snapshot_response = self._create_hybrid_snapshot(
-                    user_question, chunks
+                    user_question, passed_chunks
                 )
+                snapshot_response['output_class'] = OutputClass.HYBRID.value
+                
+            elif gate_decision.output_class == OutputClass.FULL_BACKUP:
+                # LOW AUTHORITY - Deterministic refusal/reframe (NO LLM generation)
+                logger.warning("⚠️ FULL_BACKUP: Insufficient evidence for bounded insight - deterministic refusal/reframe")
+                snapshot_response = {
+                    "status": "refused",
+                    "snapshot_type": "full_backup_refusal",
+                    "output_class": OutputClass.FULL_BACKUP.value,
+                    "question": user_question,
+                    "answer": "We cannot provide a bounded insight for this question. The evidence that passed our quality gate is insufficient to generate an authoritative response grounded in the retrieved data.",
+                    "chunks_used": gate_decision.chunks_passed,
+                    "confidence_level": "insufficient",
+                    "retrieval_quality": "below_threshold",
+                    "flagged": True,
+                    "warning": "⚠️ Insufficient evidence - deterministic refusal/reframe",
+                    "recommendation": "Please rephrase your question or provide more context."
+                }
+                
+            elif gate_decision.output_class == OutputClass.REFUSED:
+                # NO AUTHORITY - Hard refusal (short-circuit, NO LLM generation)
+                logger.error("🚫 REFUSED: No chunks meet minimum similarity - short-circuit before LLM")
+                snapshot_response = {
+                    "status": "refused",
+                    "snapshot_type": "refused",
+                    "output_class": OutputClass.REFUSED.value,
+                    "question": user_question,
+                    "answer": "Unable to provide a response. No evidence in our database meets the minimum relevance threshold for your question.",
+                    "chunks_used": 0,
+                    "confidence_level": "none",
+                    "retrieval_quality": "no_relevant_evidence",
+                    "flagged": True,
+                    "warning": "⚠️ No relevant evidence found - hard refusal",
+                    "recommendation": "Please try rephrasing your question with different keywords."
+                }
             
-            else:
-                # 0 chunks → FULL FALLBACK SNAPSHOT (FLAGGED)
-                snapshot_response = self._create_full_fallback_snapshot(
-                    user_question
-                )
+            # ========================================
+            # STEP 5: ENRICH RESPONSE WITH GATE METADATA
+            # ========================================
+            snapshot_response['gate_decision'] = {
+                'output_class': gate_decision.output_class.value,
+                'reason': gate_decision.reason,
+                'chunks_passed_gate': gate_decision.chunks_passed,
+                'unique_interviews': gate_decision.unique_interviews,
+                'top_similarity': gate_decision.top_similarity,
+                'quality_metrics': gate_decision.quality_metrics,
+                'is_deterministic': True,  # Flag that this was rule-based
+                'gate_timestamp': datetime.now().isoformat()
+            }
             
-            # STEP 3: ENRICH RESPONSE WITH RETRIEVAL METADATA
+            # Add LLM scores if available (but mark as post-gate only)
+            if llm_evidence_scores:
+                snapshot_response['llm_evidence_scoring'] = {
+                    'enabled': True,
+                    'scores': llm_evidence_scores,
+                    'note': 'LLM scoring performed AFTER gate decision. Cannot upgrade output class.'
+                }
+            
+            # Add retrieval log
             snapshot_response['retrieval_log'] = retrieval_result['log_entry']
             snapshot_response['total_chunks_retrieved'] = total_chunks
             
@@ -767,8 +996,10 @@ Provide a helpful fallback response:"""
                 snapshot_response['competency_tips'] = self._get_competency_tips(primary_competency)
             
             logger.info(
-                f"✅ Snapshot complete: {snapshot_response['snapshot_type']} | "
-                f"Chunks: {total_chunks} | Confidence: {snapshot_response.get('confidence_level')}"
+                f"✅ Snapshot complete: {snapshot_response.get('snapshot_type')} | "
+                f"Output Class: {gate_decision.output_class.value} | "
+                f"Chunks Passed Gate: {gate_decision.chunks_passed} | "
+                f"Confidence: {snapshot_response.get('confidence_level')}"
             )
             
             return snapshot_response
@@ -782,9 +1013,102 @@ Provide a helpful fallback response:"""
                 "question": user_question,
                 "message": f"Error processing question: {e}",
                 "snapshot_type": "error",
+                "output_class": "error",
                 "ei_competencies": ["general"],
                 "retrieval_attempted": True,
                 "error_details": str(e)
+            }
+    
+    def _score_evidence_quality_with_llm(self, user_question: str, chunks: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """OPTIONAL: Use LLM to score evidence quality AFTER gate decision.
+        
+        CRITICAL CONSTRAINTS:
+        - This runs ONLY after deterministic gate has made its decision
+        - Scores are for quality assessment/logging purposes only
+        - CANNOT upgrade the output class
+        - CANNOT override refusal decisions
+        
+        Args:
+            user_question: The question being answered
+            chunks: The chunks that PASSED the deterministic gate
+        
+        Returns:
+            Dict with quality scores for logging/analysis
+        """
+        logger.info(f"🤖 LLM Evidence Scoring: Evaluating {len(chunks)} chunks (post-gate)")
+        
+        try:
+            # Build context summary for LLM evaluation
+            chunk_summaries = []
+            for i, chunk in enumerate(chunks[:5], 1):
+                if chunk['type'] == 'ceo_interview':
+                    chunk_summaries.append(
+                        f"Chunk {i}: {chunk.get('person', 'Unknown')} - {chunk.get('role', 'Unknown')} "
+                        f"(Similarity: {chunk['score']:.3f})"
+                    )
+                elif chunk['type'] == 'behavioral_qa':
+                    chunk_summaries.append(
+                        f"Chunk {i}: Q&A on {chunk.get('ei_competency', 'general')} "
+                        f"(Similarity: {chunk['score']:.3f})"
+                    )
+            
+            context_summary = "\n".join(chunk_summaries)
+            
+            # LLM evaluation prompt
+            prompt = f"""You are evaluating the quality of retrieved evidence for a question.
+
+Question: {user_question}
+
+Retrieved Evidence (passed deterministic gate):
+{context_summary}
+
+Rate the following on a scale of 1-10:
+1. Relevance: How well does the evidence address the question?
+2. Diversity: How diverse are the sources/perspectives?
+3. Depth: How detailed and substantive is the content?
+4. Authoritativeness: How credible are the sources?
+
+Respond ONLY with a JSON object:
+{{
+  "relevance_score": <1-10>,
+  "diversity_score": <1-10>,
+  "depth_score": <1-10>,
+  "authority_score": <1-10>,
+  "overall_quality": <1-10>,
+  "brief_assessment": "<1-2 sentence explanation>"
+}}"""
+            
+            response = self.openai_client.chat.completions.create(
+                model=self.generation_model,
+                messages=[
+                    {"role": "system", "content": "You are an evidence quality evaluator. Respond only with valid JSON."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.3,
+                max_tokens=200
+            )
+            
+            # Parse JSON response
+            import json
+            scores = json.loads(response.choices[0].message.content)
+            
+            logger.info(f"📊 LLM Quality Scores: Overall={scores.get('overall_quality', 0)}/10")
+            
+            return {
+                "relevance_score": scores.get("relevance_score", 0),
+                "diversity_score": scores.get("diversity_score", 0),
+                "depth_score": scores.get("depth_score", 0),
+                "authority_score": scores.get("authority_score", 0),
+                "overall_quality": scores.get("overall_quality", 0),
+                "brief_assessment": scores.get("brief_assessment", ""),
+                "note": "These scores are for quality assessment only. They cannot upgrade the output class determined by the deterministic gate."
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Error in LLM evidence scoring: {e}")
+            return {
+                "error": str(e),
+                "note": "LLM scoring failed. Gate decision remains unchanged."
             }
     
     def _get_competency_tips(self, competency: str) -> List[str]:
