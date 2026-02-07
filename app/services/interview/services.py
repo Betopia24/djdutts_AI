@@ -280,7 +280,7 @@ class interviewServicees:
             candidates = [
                 json_file_path,
                 os.getenv("QA_DATASET_PATH"),
-                str(Path(__file__).resolve().parents[2] / "files" / "hr_interview_questions_dataset.json"),
+                str(Path(__file__).resolve().parents[3] / "files" / "hr_interview_questions_dataset.json"),
                 str(Path.cwd() / "files" / "hr_interview_questions_dataset.json"),
             ]
 

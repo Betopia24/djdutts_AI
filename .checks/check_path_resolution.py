@@ -6,7 +6,7 @@ svc_file = Path(r"c:\Users\Betopia\Downloads\djdutts-20260205T094532Z-1-001\djdu
 candidates = [
     None,
     os.getenv("QA_DATASET_PATH"),
-    str(svc_file.resolve().parents[2] / "files" / "hr_interview_questions_dataset.json"),
+    str(svc_file.resolve().parents[3] / "files" / "hr_interview_questions_dataset.json"),
     str(Path.cwd() / "files" / "hr_interview_questions_dataset.json"),
 ]
 
