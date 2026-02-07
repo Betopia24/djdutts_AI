@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  djdutts-api:
+    build: .
+    container_name: djdutts-api
+    ports:
+      - "8011:8011"
+    environment:
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./files:/app/files
+      - ./faiss_index.index:/app/faiss_index.index
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8011/docs"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
