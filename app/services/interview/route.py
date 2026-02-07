@@ -37,27 +37,6 @@ async def interview_round(request: InterviewQuestion):
             detail=f"Error processing interview question: {str(e)}"
         )
 
-@router.post("/load_qa_dataset")
-async def load_qa_dataset():
-    """
-    Load the HR interview questions JSON dataset into Pinecone
-    
-    NOTE: This endpoint requires hr_interview_questions_dataset.json file to exist in files/ directory
-    """
-    try:
-        result = interview_service.process_qa_dataset()
-        return result
-    except FileNotFoundError as e:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Dataset file not found: {str(e)}"
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error loading Q&A dataset: {str(e)}"
-        )
-
 @router.post("/load_interview_files")
 async def load_interview_files():
     """
