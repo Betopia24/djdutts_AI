@@ -6,6 +6,8 @@ services:
     container_name: djdutts-api
     ports:
       - "8011:8011"
+    env_file:
+      - .env
     environment:
       - PYTHONUNBUFFERED=1
       - INTERVIEW_FILES_DIR=/app/files/interview_2

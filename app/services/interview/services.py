@@ -133,8 +133,10 @@ class interviewServicees:
             )
             return response.data[0].embedding
         except Exception as e:
-            print(f"Error generating embedding: {e}")
-            return [0.0] * self.embedding_dimension
+            logger.error(f"❌ EMBEDDING ERROR: {e}")
+            logger.error(f"❌ API Key present: {bool(self.openai_client.api_key)}")
+            logger.error(f"❌ Model: {self.embedding_model}")
+            raise  # Re-raise to surface the error properly
     
     def process_text_files_from_directory(self, directory_path: Optional[str] = None):
         """Process all text files from interview_2 directory and store in FAISS.
