@@ -12,6 +12,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the entire project
 COPY . .
 
+# Create data directory for FAISS index persistence
+RUN mkdir -p /app/data
+
 # Expose port 8011
 EXPOSE 8011
 

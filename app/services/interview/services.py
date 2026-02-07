@@ -941,6 +941,9 @@ Provide a hybrid response that honors what was actually in the evidence pack:"""
                     "question": user_question,
                     "answer": "We cannot provide a bounded insight for this question. The evidence that passed our quality gate is insufficient to generate an authoritative response grounded in the retrieved data.",
                     "chunks_used": gate_decision.chunks_passed,
+                    "top_score": gate_decision.top_similarity,
+                    "ei_competencies": ["general"],
+                    "sources": [],
                     "confidence_level": "insufficient",
                     "retrieval_quality": "below_threshold",
                     "flagged": True,
@@ -958,6 +961,9 @@ Provide a hybrid response that honors what was actually in the evidence pack:"""
                     "question": user_question,
                     "answer": "Unable to provide a response. No evidence in our database meets the minimum relevance threshold for your question.",
                     "chunks_used": 0,
+                    "top_score": gate_decision.top_similarity,
+                    "ei_competencies": ["general"],
+                    "sources": [],
                     "confidence_level": "none",
                     "retrieval_quality": "no_relevant_evidence",
                     "flagged": True,
@@ -1012,11 +1018,17 @@ Provide a hybrid response that honors what was actually in the evidence pack:"""
             return {
                 "status": "error",
                 "question": user_question,
-                "message": f"Error processing question: {e}",
+                "answer": f"Error processing question: {e}",
                 "snapshot_type": "error",
                 "output_class": "error",
+                "chunks_used": 0,
+                "top_score": 0.0,
                 "ei_competencies": ["general"],
+                "sources": [],
+                "confidence_level": "none",
+                "retrieval_quality": "error",
                 "retrieval_attempted": True,
+                "flagged": True,
                 "error_details": str(e)
             }
     

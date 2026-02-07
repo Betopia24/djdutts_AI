@@ -8,11 +8,11 @@ services:
       - "8011:8011"
     environment:
       - PYTHONUNBUFFERED=1
-      - QA_DATASET_PATH=/app/files/hr_interview_questions_dataset.json
       - INTERVIEW_FILES_DIR=/app/files/interview_2
+      - FAISS_INDEX_PATH=/app/data/faiss_index
     volumes:
       - ./files:/app/files:ro
-      - ./faiss_index.index:/app/faiss_index.index
+      - ./data:/app/data
     working_dir: /app
     restart: unless-stopped
     healthcheck:
