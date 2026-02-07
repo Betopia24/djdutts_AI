@@ -426,18 +426,28 @@ class interviewServicees:
             # Perform vector search
             scores, indices = self.index.search(query_vector, top_k)
             
+            # DEBUG: Log raw FAISS results
+            logger.info(f"🔎 DEBUG FAISS - Index total: {self.index.ntotal}")
+            logger.info(f"🔎 DEBUG FAISS - Raw scores: {scores[0].tolist()}")
+            logger.info(f"🔎 DEBUG FAISS - Raw indices: {indices[0].tolist()}")
+            logger.info(f"🔎 DEBUG FAISS - index_to_id keys count: {len(self.index_to_id)}")
+            logger.info(f"🔎 DEBUG FAISS - min_retrieval_score threshold: {self.min_retrieval_score}")
+            
             # Process retrieved chunks
             retrieved_chunks = []
             for score, idx in zip(scores[0], indices[0]):
                 if idx == -1:  # FAISS returns -1 for empty results
+                    logger.info(f"🔎 DEBUG: Skipping idx=-1")
                     continue
                 
                 # Filter out irrelevant chunks with low scores
                 if score < self.min_retrieval_score:
+                    logger.info(f"🔎 DEBUG: Skipping idx={idx} score={score} (below threshold {self.min_retrieval_score})")
                     continue
                     
                 vector_id = self.index_to_id.get(int(idx))
                 if not vector_id:
+                    logger.info(f"🔎 DEBUG: Skipping idx={idx} - no vector_id found in index_to_id")
                     continue
                     
                 metadata = self.metadata_store.get(vector_id, {})
