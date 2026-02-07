@@ -296,8 +296,9 @@ class interviewServicees:
 
             if resolved is None:
                 return {
-                    "status": "error",
-                    "message": f"File not found: {json_file_path or '(no path provided)'}; looked in: {candidates}"
+                    "status": "info",
+                    "message": "Dataset file not available. Proceeding without Q&A dataset.",
+                    "vectors_added": 0
                 }
 
             json_file_path = resolved
