@@ -68,3 +68,55 @@ class RetrievalStatsResponse(BaseModel):
     retrieval_success_rate: float
     high_quality_rate: float
     zero_chunk_requests: int
+
+
+# =====================================
+# Voice & Strategy Endpoint Schemas
+# =====================================
+
+class TranscriptionResponse(BaseModel):
+    """Response from voice transcription endpoint"""
+    status: str
+    transcription: str
+    language: Optional[str] = None
+    duration_seconds: Optional[float] = None
+    confidence: Optional[float] = None
+
+
+class StrategyRequest(BaseModel):
+    """Request for strategy generation with optional text input"""
+    challenge_text: Optional[str] = Field(
+        default=None,
+        description="Text description of your challenge or question"
+    )
+    context: Optional[str] = Field(
+        default=None,
+        description="Additional context for the strategy request"
+    )
+
+
+class StrategyResponse(BaseModel):
+    """Response from strategy generation endpoint"""
+    status: str
+    input_sources: List[str] = Field(
+        description="Sources used: text, voice, documents"
+    )
+    combined_input: str = Field(
+        description="The combined text from all input sources"
+    )
+    snapshot_type: str
+    output_class: str
+    strategy: str = Field(
+        description="The strategic suggestion/answer"
+    )
+    chunks_used: int
+    top_score: float
+    sources: List[SourceReference]
+    confidence_level: str
+    retrieval_quality: str
+    ei_competencies: List[str]
+    gate_decision: Optional[Dict[str, Any]] = None
+    post_generation_validation: Optional[Dict[str, Any]] = None
+    flagged: Optional[bool] = False
+    warning: Optional[str] = None
+    recommendation: Optional[str] = None

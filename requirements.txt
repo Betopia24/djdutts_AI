@@ -1,4 +1,4 @@
-fastapi
+﻿fastapi
 uvicorn
 faiss-cpu
 python-dotenv
@@ -6,3 +6,7 @@ openai
 pydantic
 pydantic-settings
 numpy
+python-multipart
+PyPDF2
+python-docx
+aiofiles

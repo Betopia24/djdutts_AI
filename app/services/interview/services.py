@@ -945,6 +945,30 @@ Provide a hybrid response that honors what was actually in the evidence pack:"""
                     'note': 'LLM scoring performed AFTER gate decision. Cannot upgrade output class.'
                 }
             
+            # ========================================
+            # STEP 6: POST-GENERATION VALIDATION (claim ↔ evidence alignment)
+            # ========================================
+            if gate_decision.output_class in [OutputClass.PRIMARY, OutputClass.HYBRID]:
+                passed_chunks = [
+                    chunk for chunk in chunks 
+                    if chunk['score'] >= self.GATE_MIN_SIMILARITY_THRESHOLD
+                ][:gate_decision.chunks_passed]
+                
+                validation_result = self._validate_response_against_evidence(
+                    snapshot_response.get('answer', ''),
+                    passed_chunks,
+                    user_question
+                )
+                snapshot_response['post_generation_validation'] = validation_result
+                
+                # Flag if validation detected issues
+                if validation_result.get('should_flag'):
+                    snapshot_response['validation_warning'] = (
+                        "⚠️ Post-generation validation detected potential issues: " +
+                        ", ".join(validation_result.get('issues', ['Unknown issue']))
+                    )
+                    logger.warning(f"⚠️ VALIDATION FLAGGED: {validation_result.get('issues')}")
+            
             # Add retrieval log
             snapshot_response['retrieval_log'] = retrieval_result['log_entry']
             snapshot_response['total_chunks_retrieved'] = total_chunks
@@ -982,6 +1006,95 @@ Provide a hybrid response that honors what was actually in the evidence pack:"""
                 "retrieval_attempted": True,
                 "flagged": True,
                 "error_details": str(e)
+            }
+    
+    def _validate_response_against_evidence(self, generated_answer: str, chunks: List[Dict[str, Any]], user_question: str) -> Dict[str, Any]:
+        """POST-GENERATION VALIDATION: Verify claim ↔ evidence alignment.
+        
+        This validation checks:
+        1. Claims in the response are traceable to evidence chunks
+        2. No generic strategy language is present (hallucination indicator)
+        3. Citations are properly grounded
+        
+        Returns:
+            Dict with validation results and any flagged issues
+        """
+        logger.info("🔍 POST-GEN VALIDATION: Checking claim ↔ evidence alignment")
+        
+        try:
+            # Build evidence context for validation
+            evidence_context = []
+            for i, chunk in enumerate(chunks[:5], 1):
+                if chunk['type'] == 'ceo_interview':
+                    evidence_context.append(
+                        f"Evidence {i}: {chunk.get('person', 'Unknown')} - {chunk.get('content', '')[:500]}"
+                    )
+                elif chunk['type'] == 'behavioral_qa':
+                    evidence_context.append(
+                        f"Evidence {i}: {chunk.get('question', '')} | {chunk.get('answer', '')[:300]}"
+                    )
+            
+            evidence_str = "\n\n".join(evidence_context)
+            
+            # Validation prompt
+            validation_prompt = f"""You are a strict fact-checker validating a generated response against source evidence.
+
+QUESTION: {user_question}
+
+SOURCE EVIDENCE:
+{evidence_str}
+
+GENERATED RESPONSE:
+{generated_answer}
+
+ANALYZE AND RESPOND WITH JSON ONLY:
+{{
+  "claims_verified": <number of claims that are directly traceable to evidence>,
+  "claims_total": <total number of factual claims in response>,
+  "has_generic_strategy_language": <true if response contains generic business/leadership advice NOT from evidence>,
+  "generic_phrases_found": [<list of generic phrases detected>],
+  "evidence_citations_correct": <true if executive names/sources are correctly attributed>,
+  "fabricated_details": [<list of any details that appear fabricated/not in evidence>],
+  "validation_passed": <true if response is properly grounded>,
+  "confidence": <"high"|"medium"|"low">,
+  "issues": [<list of specific issues found>]
+}}"""
+            
+            response = self.openai_client.chat.completions.create(
+                model=self.generation_model,
+                messages=[
+                    {"role": "system", "content": "You are a strict evidence validator. Respond ONLY with valid JSON."},
+                    {"role": "user", "content": validation_prompt}
+                ],
+                temperature=0.1,  # Low temperature for consistent validation
+                max_tokens=300
+            )
+            
+            # Parse validation results
+            validation_result = json.loads(response.choices[0].message.content)
+            
+            # Determine if response should be flagged
+            validation_result['should_flag'] = (
+                validation_result.get('has_generic_strategy_language', False) or
+                len(validation_result.get('fabricated_details', [])) > 0 or
+                not validation_result.get('validation_passed', True)
+            )
+            
+            logger.info(
+                f"🔍 VALIDATION RESULT: passed={validation_result.get('validation_passed')} | "
+                f"claims={validation_result.get('claims_verified', 0)}/{validation_result.get('claims_total', 0)} | "
+                f"generic_language={validation_result.get('has_generic_strategy_language')}"
+            )
+            
+            return validation_result
+            
+        except Exception as e:
+            logger.error(f"❌ Post-generation validation error: {e}")
+            return {
+                "validation_passed": None,
+                "error": str(e),
+                "should_flag": True,
+                "note": "Validation failed - manual review recommended"
             }
     
     def _score_evidence_quality_with_llm(self, user_question: str, chunks: List[Dict[str, Any]]) -> Dict[str, Any]:
