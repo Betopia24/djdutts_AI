@@ -370,7 +370,6 @@ async def generate_strategy(
                 if "documents" not in input_sources:
                     input_sources.append("documents")
                 logger.info(f"📄 Extracted from {doc.filename}: {len(extracted_text)} chars")
-                    logger.info(f"📄 Extracted from {doc.filename}: {len(extracted_text)} chars")
         
         # Validate that we have some input
         if not combined_text_parts:
