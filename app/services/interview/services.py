@@ -641,9 +641,13 @@ Provide a comprehensive response (200-400 words) using ONLY what the evidence co
                 "sources": [
                     {
                         "type": chunk['type'],
-                        "reference": chunk.get('person', chunk.get('question', 'Unknown')[:50]),
-                        "score": chunk['score']
-                    } for chunk in chunks[:3]
+                        "reference": chunk.get('person', chunk.get('question', 'Unknown')[:50]),  # Legacy field
+                        "score": chunk['score'],  # Legacy field
+                        "interview_id": f"interview_{chunk.get('person', 'unknown').replace(' ', '_').lower()}",
+                        "executive_name": chunk.get('person', 'Unknown'),
+                        "chunk_id": f"chunk_{i+1}",
+                        "similarity_score": chunk['score']
+                    } for i, chunk in enumerate(chunks[:3])
                 ],
                 "confidence_level": "high",
                 "retrieval_quality": "excellent"
@@ -734,9 +738,13 @@ Provide a hybrid response that honors what was actually in the evidence pack:"""
                 "sources": [
                     {
                         "type": chunk['type'],
-                        "reference": chunk.get('person', chunk.get('question', 'Unknown')[:50]),
-                        "score": chunk['score']
-                    } for chunk in chunks[:1]
+                        "reference": chunk.get('person', chunk.get('question', 'Unknown')[:50]),  # Legacy field
+                        "score": chunk['score'],  # Legacy field
+                        "interview_id": f"interview_{chunk.get('person', 'unknown').replace(' ', '_').lower()}",
+                        "executive_name": chunk.get('person', 'Unknown'),
+                        "chunk_id": f"chunk_{i+1}",
+                        "similarity_score": chunk['score']
+                    } for i, chunk in enumerate(chunks[:1])
                 ] if chunks else [],
                 "confidence_level": "medium",
                 "retrieval_quality": "partial",
@@ -937,6 +945,15 @@ Provide a hybrid response that honors what was actually in the evidence pack:"""
                 'gate_timestamp': datetime.now().isoformat()
             }
             
+            # Add evidence summary for all responses (EI auditable proof)
+            snapshot_response['evidence_summary'] = {
+                'chunks_used': snapshot_response.get('chunks_used', 0),
+                'unique_interviews': gate_decision.unique_interviews,
+                'top_score': snapshot_response.get('top_score', 0.0),
+                'similarity_threshold_applied': self.GATE_MIN_SIMILARITY_THRESHOLD,
+                'gate_decision': gate_decision.output_class.value
+            }
+            
             # Add LLM scores if available (but mark as post-gate only)
             if llm_evidence_scores:
                 snapshot_response['llm_evidence_scoring'] = {
@@ -959,15 +976,63 @@ Provide a hybrid response that honors what was actually in the evidence pack:"""
                     passed_chunks,
                     user_question
                 )
-                snapshot_response['post_generation_validation'] = validation_result
                 
-                # Flag if validation detected issues
-                if validation_result.get('should_flag'):
-                    snapshot_response['validation_warning'] = (
-                        "⚠️ Post-generation validation detected potential issues: " +
-                        ", ".join(validation_result.get('issues', ['Unknown issue']))
-                    )
-                    logger.warning(f"⚠️ VALIDATION FLAGGED: {validation_result.get('issues')}")
+                # ⚡ EI RULE: Auto-downgrade if validation fails
+                original_output_class = snapshot_response.get('output_class')
+                auto_downgrade_applied = None
+                
+                if not validation_result.get('validation_passed', True):
+                    logger.warning(f"🔻 VALIDATION FAILED - Auto-downgrading from {original_output_class}")
+                    
+                    if original_output_class == OutputClass.PRIMARY.value:
+                        # PRIMARY → HYBRID downgrade
+                        snapshot_response['output_class'] = OutputClass.HYBRID.value
+                        snapshot_response['snapshot_type'] = SnapshotType.HYBRID.value
+                        snapshot_response['confidence_level'] = 'medium'
+                        snapshot_response['retrieval_quality'] = 'partial'
+                        auto_downgrade_applied = f"PRIMARY → HYBRID (validation failed)"
+                        logger.warning("🔻 AUTO-DOWNGRADE: PRIMARY → HYBRID due to validation failure")
+                        
+                    elif original_output_class == OutputClass.HYBRID.value:
+                        # HYBRID → REFUSE downgrade
+                        snapshot_response.update({
+                            'status': 'refused',
+                            'output_class': OutputClass.REFUSED.value,
+                            'snapshot_type': 'validation_refusal',
+                            'answer': 'Unable to provide a reliable response. Post-generation validation detected issues with evidence alignment.',
+                            'confidence_level': 'insufficient',
+                            'retrieval_quality': 'validation_failed',
+                            'flagged': True,
+                            'warning': '⚠️ Validation failure - response refused'
+                        })
+                        auto_downgrade_applied = f"HYBRID → REFUSED (validation failed)"
+                        logger.warning("🔻 AUTO-DOWNGRADE: HYBRID → REFUSED due to validation failure")
+                
+                
+                snapshot_response['validation'] = {
+                    'passed': validation_result.get('validation_passed', True),
+                    'claims_supported': validation_result.get('claims_verified', 0),
+                    'claims_total': validation_result.get('claims_total', 0),
+                    'has_generic_language': validation_result.get('has_generic_strategy_language', False),
+                    'fabricated_details': validation_result.get('fabricated_details', []),
+                    'confidence': validation_result.get('confidence', 'unknown'),
+                    'auto_downgrade_applied': auto_downgrade_applied
+                }
+                
+                # Legacy field for backward compatibility
+                snapshot_response['post_generation_validation'] = validation_result
+            else:
+                # Add validation metadata for FULL_BACKUP/REFUSED (no validation performed)
+                snapshot_response['validation'] = {
+                    'passed': True,  # No validation performed, gate decision was deterministic
+                    'claims_supported': 0,
+                    'claims_total': 0,
+                    'has_generic_language': False,
+                    'fabricated_details': [],
+                    'confidence': 'not_applicable',
+                    'auto_downgrade_applied': None
+                }
+                snapshot_response['post_generation_validation'] = validation_result
             
             # Add retrieval log
             snapshot_response['retrieval_log'] = retrieval_result['log_entry']

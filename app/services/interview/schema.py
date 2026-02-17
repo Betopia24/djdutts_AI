@@ -4,11 +4,43 @@ from pydantic import BaseModel, Field
 class InterviewQuestion(BaseModel):
     question: str
 
+class EvidenceSummary(BaseModel):
+    """Summary of evidence used for EI auditable proof"""
+    chunks_used: int
+    unique_interviews: int
+    top_score: float
+    similarity_threshold_applied: float
+    gate_decision: str
+    
+class ValidationResult(BaseModel):
+    """Validation results for EI auditable proof"""
+    passed: bool
+    claims_supported: int
+    claims_total: int
+    has_generic_language: bool = False
+    fabricated_details: List[str] = []
+    confidence: str
+    auto_downgrade_applied: Optional[str] = None
+
 class SourceReference(BaseModel):
-    """Reference to a source chunk used in snapshot generation"""
+    """Reference to a source chunk used in snapshot generation with structured citation metadata"""
     type: str
-    reference: str
-    score: float
+    reference: str  # Legacy field - kept for backward compatibility
+    score: float  # Legacy field - kept for backward compatibility
+    
+    # Structured Citation Metadata for EI
+    interview_id: str = Field(
+        description="Unique interview identifier (e.g., 'interview_sangita_reddy')"
+    )
+    executive_name: str = Field(
+        description="Name of the executive from the interview"
+    )
+    chunk_id: str = Field(
+        description="Unique chunk identifier (e.g., 'chunk_1')"
+    )
+    similarity_score: float = Field(
+        description="Vector similarity score for this chunk (0.0-1.0)"
+    )
 
 class RetrievalLog(BaseModel):
     """Log entry for retrieval operations"""
@@ -46,6 +78,10 @@ class SnapshotResponse(BaseModel):
     )
     warning: Optional[str] = None
     note: Optional[str] = None
+    
+    # ✅ EI Auditable Proof - Structured Validation Metadata
+    evidence_summary: Optional[EvidenceSummary] = None
+    validation: Optional[ValidationResult] = None
 
 class InterviewResponse(BaseModel):
     """Legacy response model - maintained for backward compatibility"""
