@@ -1032,7 +1032,10 @@ Provide a hybrid response that honors what was actually in the evidence pack:"""
                     'confidence': 'not_applicable',
                     'auto_downgrade_applied': None
                 }
-                snapshot_response['post_generation_validation'] = validation_result
+                snapshot_response['post_generation_validation'] = {
+                    'validation_passed': None,
+                    'note': 'Not applicable: response was deterministically refused by gate decision before generation.'
+                }
             
             # Add retrieval log
             snapshot_response['retrieval_log'] = retrieval_result['log_entry']
