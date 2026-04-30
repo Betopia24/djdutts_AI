@@ -18,9 +18,10 @@ class ValidationResult(BaseModel):
     claims_supported: int
     claims_total: int
     has_generic_language: bool = False
-    fabricated_details: List[str] = []
+    fabricated_details: List[str] = Field(default_factory=list)
     confidence: str
     auto_downgrade_applied: Optional[str] = None
+    downgrade_applied: Optional[str] = None
 
 class SourceReference(BaseModel):
     """Reference to a source chunk used in snapshot generation with structured citation metadata"""
@@ -57,10 +58,20 @@ class SnapshotResponse(BaseModel):
     snapshot_type: str = Field(
         description="Type: interview_based, hybrid, or full_fallback"
     )
+    output_class: Optional[str] = Field(
+        default=None,
+        description="Deterministic output class: primary, hybrid, full_backup, refused"
+    )
     question: str
     answer: str
     chunks_used: int
     top_score: float
+    retrieval_count: Optional[int] = None
+    unique_interviews: Optional[int] = None
+    similarity_scores: Optional[List[float]] = None
+    llm_called: Optional[bool] = None
+    llm_blocked: Optional[bool] = None
+    llm_block_reason: Optional[str] = None
     ei_competencies: List[str]
     sources: List[SourceReference]
     confidence_level: str = Field(
@@ -72,6 +83,11 @@ class SnapshotResponse(BaseModel):
     retrieval_log: Optional[Dict[str, Any]] = None
     total_chunks_retrieved: Optional[int] = None
     competency_tips: Optional[List[str]] = None
+    gate_decision: Optional[Dict[str, Any]] = None
+    post_generation_validation: Optional[Dict[str, Any]] = None
+    validation_result: Optional[Dict[str, Any]] = None
+    llm_evidence_scoring: Optional[Dict[str, Any]] = None
+    downgrade_applied: Optional[str] = None
     flagged: Optional[bool] = Field(
         default=False,
         description="True if full fallback (0 chunks)"
