@@ -944,6 +944,15 @@ Provide a hybrid response that honors what was actually in the evidence pack:"""
                 'is_deterministic': True,  # Flag that this was rule-based
                 'gate_timestamp': datetime.now().isoformat()
             }
+
+            snapshot_response['retrieval_count'] = total_chunks
+            snapshot_response['unique_interviews'] = gate_decision.unique_interviews
+            snapshot_response['similarity_scores'] = [
+                chunk.get('score', 0.0) for chunk in chunks
+            ]
+            snapshot_response['llm_called'] = gate_decision.allow_generation
+            snapshot_response['llm_blocked'] = not gate_decision.allow_generation
+            snapshot_response['llm_block_reason'] = None if gate_decision.allow_generation else gate_decision.reason
             
             # Add evidence summary for all responses (EI auditable proof)
             snapshot_response['evidence_summary'] = {
@@ -979,7 +988,7 @@ Provide a hybrid response that honors what was actually in the evidence pack:"""
                 
                 # ⚡ EI RULE: Auto-downgrade if validation fails
                 original_output_class = snapshot_response.get('output_class')
-                auto_downgrade_applied = None
+                downgrade_applied = None
                 
                 if not validation_result.get('validation_passed', True):
                     logger.warning(f"🔻 VALIDATION FAILED - Auto-downgrading from {original_output_class}")
@@ -990,7 +999,7 @@ Provide a hybrid response that honors what was actually in the evidence pack:"""
                         snapshot_response['snapshot_type'] = SnapshotType.HYBRID.value
                         snapshot_response['confidence_level'] = 'medium'
                         snapshot_response['retrieval_quality'] = 'partial'
-                        auto_downgrade_applied = f"PRIMARY → HYBRID (validation failed)"
+                        downgrade_applied = f"PRIMARY → HYBRID (validation failed)"
                         logger.warning("🔻 AUTO-DOWNGRADE: PRIMARY → HYBRID due to validation failure")
                         
                     elif original_output_class == OutputClass.HYBRID.value:
@@ -1005,7 +1014,7 @@ Provide a hybrid response that honors what was actually in the evidence pack:"""
                             'flagged': True,
                             'warning': '⚠️ Validation failure - response refused'
                         })
-                        auto_downgrade_applied = f"HYBRID → REFUSED (validation failed)"
+                        downgrade_applied = f"HYBRID → REFUSED (validation failed)"
                         logger.warning("🔻 AUTO-DOWNGRADE: HYBRID → REFUSED due to validation failure")
                 
                 
@@ -1016,11 +1025,14 @@ Provide a hybrid response that honors what was actually in the evidence pack:"""
                     'has_generic_language': validation_result.get('has_generic_strategy_language', False),
                     'fabricated_details': validation_result.get('fabricated_details', []),
                     'confidence': validation_result.get('confidence', 'unknown'),
-                    'auto_downgrade_applied': auto_downgrade_applied
+                    'auto_downgrade_applied': downgrade_applied,
+                    'downgrade_applied': downgrade_applied
                 }
                 
                 # Legacy field for backward compatibility
                 snapshot_response['post_generation_validation'] = validation_result
+                snapshot_response['validation_result'] = validation_result
+                snapshot_response['downgrade_applied'] = downgrade_applied
             else:
                 # Add validation metadata for FULL_BACKUP/REFUSED (no validation performed)
                 snapshot_response['validation'] = {
@@ -1030,12 +1042,15 @@ Provide a hybrid response that honors what was actually in the evidence pack:"""
                     'has_generic_language': False,
                     'fabricated_details': [],
                     'confidence': 'not_applicable',
-                    'auto_downgrade_applied': None
+                    'auto_downgrade_applied': None,
+                    'downgrade_applied': None
                 }
                 snapshot_response['post_generation_validation'] = {
                     'validation_passed': None,
                     'note': 'Not applicable: response was deterministically refused by gate decision before generation.'
                 }
+                snapshot_response['validation_result'] = snapshot_response['post_generation_validation']
+                snapshot_response['downgrade_applied'] = None
             
             # Add retrieval log
             snapshot_response['retrieval_log'] = retrieval_result['log_entry']

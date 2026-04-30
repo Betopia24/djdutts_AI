@@ -116,6 +116,51 @@ class DeterministicGatingValidator:
         }
         
         return citations
+
+    def format_response_audit(self, response: dict) -> dict:
+        """Extract the audit fields requested for each example."""
+        validation = response.get('validation', {})
+        return {
+            'query': response.get('question', ''),
+            'output_class': response.get('output_class', 'unknown'),
+            'llm_called': response.get('llm_called', None),
+            'llm_blocked': response.get('llm_blocked', None),
+            'retrieval_count': response.get('retrieval_count', response.get('chunks_used', 0)),
+            'unique_interviews': response.get('unique_interviews', response.get('evidence_summary', {}).get('unique_interviews', 0)),
+            'similarity_scores': response.get('similarity_scores', [source.get('similarity_score', 0.0) for source in response.get('sources', [])]),
+            'gate_decision': response.get('gate_decision', {}),
+            'validation_result': response.get('validation_result', validation),
+            'downgrade_applied': response.get('downgrade_applied', validation.get('auto_downgrade_applied')),
+            'source_references': response.get('sources', []),
+            'final_response': response.get('answer', '')
+        }
+
+    def print_response_audit(self, response: dict):
+        """Print the requested audit fields in a compact block."""
+        audit = self.format_response_audit(response)
+        gate_decision = audit['gate_decision']
+        validation_result = audit['validation_result'] or {}
+
+        self.print_subsection_header("RESPONSE AUDIT")
+        print(f"Query: {audit['query']}")
+        print(f"Output Class: {audit['output_class']}")
+        print(f"LLM Called: {audit['llm_called']}")
+        print(f"LLM Blocked: {audit['llm_blocked']}")
+        print(f"Retrieval Count: {audit['retrieval_count']}")
+        print(f"Unique Interview Count: {audit['unique_interviews']}")
+        print(f"Similarity Scores: {audit['similarity_scores']}")
+        print(f"Gate Decision: {gate_decision.get('output_class', 'unknown')} - {gate_decision.get('reason', 'N/A')}")
+        print(f"Validation Result: {validation_result}")
+        print(f"Downgrade Applied: {audit['downgrade_applied'] or 'None'}")
+        print(f"Source References: {len(audit['source_references'])} source(s)")
+        for i, source in enumerate(audit['source_references'], 1):
+            print(
+                f"  {i}. {source.get('executive_name', 'Unknown')} | "
+                f"{source.get('interview_id', 'N/A')} | {source.get('chunk_id', 'N/A')} | "
+                f"score={source.get('similarity_score', 0.0):.3f}"
+            )
+        print("Final Response Returned:")
+        print(audit['final_response'])
         
     def test_primary_example(self):
         """Test PRIMARY output class with ≥2 interviews and ≥2 chunks."""
@@ -187,6 +232,7 @@ class DeterministicGatingValidator:
         answer = response.get('answer', 'No answer generated')
         print(f"📝 Response (first 500 chars):")
         print(f"   {answer[:500]}...")
+        self.print_response_audit(response)
         
         # Check for authoritative language
         has_evidence_citations = any(name in answer for name in citations['unique_executives'])
@@ -202,6 +248,7 @@ class DeterministicGatingValidator:
             'unique_interviews': unique_interviews,
             'citations': citations,
             'passed_validation': is_primary and has_sufficient_chunks and has_multiple_interviews,
+            'audit': self.format_response_audit(response),
             'response_length': len(answer),
             'timestamp': datetime.now().isoformat()
         }
@@ -269,6 +316,7 @@ class DeterministicGatingValidator:
         answer = response.get('answer', 'No answer generated')
         print(f"📝 Response:")
         print(f"   {answer}")
+        self.print_response_audit(response)
         
         # Check for authoritative language (should be absent)
         has_authoritative_language = any(phrase in answer.lower() for phrase in [
@@ -293,6 +341,7 @@ class DeterministicGatingValidator:
             'chunks_used': chunks_used,
             'citations': citations,
             'passed_validation': is_refuse_or_backup and has_no_chunks,
+            'audit': self.format_response_audit(response),
             'has_authoritative_language': has_authoritative_language,
             'has_refusal_language': has_refusal_language,
             'response_length': len(answer),

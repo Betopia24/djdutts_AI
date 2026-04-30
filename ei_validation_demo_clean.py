@@ -13,6 +13,26 @@ Shows structured validation metadata in API response for auditable proof.
 import json
 from datetime import datetime
 
+
+def enrich_example_response(response, query, llm_called, llm_blocked, llm_block_reason=None, downgrade_applied=None):
+    """Normalize example payloads so each case exposes the requested audit fields."""
+    sources = response.get("sources", [])
+    similarity_scores = [source.get("similarity_score", 0.0) for source in sources]
+    unique_interviews = response.get(
+        "unique_interviews",
+        response.get("evidence_summary", {}).get("unique_interviews", len({source.get("executive_name", "Unknown") for source in sources}))
+    )
+    response.setdefault("question", query)
+    response.setdefault("retrieval_count", response.get("chunks_used", 0))
+    response.setdefault("unique_interviews", unique_interviews)
+    response.setdefault("similarity_scores", similarity_scores)
+    response.setdefault("llm_called", llm_called)
+    response.setdefault("llm_blocked", llm_blocked)
+    response.setdefault("llm_block_reason", llm_block_reason)
+    response.setdefault("validation_result", response.get("validation"))
+    response.setdefault("downgrade_applied", downgrade_applied)
+    return response
+
 def show_primary_passed_validation():
     """Show PRIMARY example with validation passed=true."""
     print("=" * 80)
@@ -86,7 +106,15 @@ def show_primary_passed_validation():
         "flagged": False
     }
     
-    print_response_summary(primary_response, "PRIMARY")
+    print_response_summary(
+        enrich_example_response(
+            primary_response,
+            primary_response["question"],
+            llm_called=True,
+            llm_blocked=False,
+        ),
+        "PRIMARY"
+    )
     return primary_response
 
 def show_hybrid_bounded_language():
@@ -149,7 +177,15 @@ def show_hybrid_bounded_language():
         "note": "Evidence-first response with bounded adjacent insight"
     }
     
-    print_response_summary(hybrid_response, "HYBRID")
+    print_response_summary(
+        enrich_example_response(
+            hybrid_response,
+            hybrid_response["question"],
+            llm_called=True,
+            llm_blocked=False,
+        ),
+        "HYBRID"
+    )
     return hybrid_response
 
 def show_full_backup_refuse():
@@ -204,7 +240,16 @@ def show_full_backup_refuse():
         "warning": "⚠️ Insufficient evidence - deterministic refusal/reframe"
     }
     
-    print_response_summary(backup_response, "FULL_BACKUP")
+    print_response_summary(
+        enrich_example_response(
+            backup_response,
+            backup_response["question"],
+            llm_called=False,
+            llm_blocked=True,
+            llm_block_reason="Deterministic gate blocked generation before any LLM call",
+        ),
+        "FULL_BACKUP"
+    )
     return backup_response
 
 def show_auto_downgrade_example():
@@ -267,19 +312,37 @@ def show_auto_downgrade_example():
         "flagged": False
     }
     
-    print_response_summary(downgrade_response, "AUTO-DOWNGRADED")
+    print_response_summary(
+        enrich_example_response(
+            downgrade_response,
+            downgrade_response["question"],
+            llm_called=True,
+            llm_blocked=False,
+            downgrade_applied="PRIMARY → HYBRID (validation failed)",
+        ),
+        "AUTO-DOWNGRADED"
+    )
     return downgrade_response
 
 def print_response_summary(response, case_type):
     """Print a formatted summary of the response."""
+    query = response.get('question', 'N/A')
     evidence = response.get('evidence_summary', {})
     validation = response.get('validation', {})
+    sources = response.get('sources', [])
+    final_response = response.get('answer', '')
     
     print(f"\n📊 Response Summary ({case_type}):")
+    print(f"   ├─ Query: {query}")
     print(f"   ├─ Status: {response.get('status')}")
     print(f"   ├─ Output Class: {response.get('output_class')}")
     print(f"   ├─ Snapshot Type: {response.get('snapshot_type')}")
     print(f"   └─ Confidence: {response.get('confidence_level')}")
+
+    print(f"\n🤖 LLM Audit:")
+    print(f"   ├─ LLM Called: {response.get('llm_called')}")
+    print(f"   ├─ LLM Blocked: {response.get('llm_blocked')}")
+    print(f"   └─ Block Reason: {response.get('llm_block_reason') or 'None'}")
     
     print(f"\n🔍 Evidence Summary (Auditable Proof):")
     print(f"   ├─ Chunks Used: {evidence.get('chunks_used')}")
@@ -287,6 +350,11 @@ def print_response_summary(response, case_type):
     print(f"   ├─ Top Score: {evidence.get('top_score', 0):.3f}")
     print(f"   ├─ Threshold Applied: {evidence.get('similarity_threshold_applied')}")
     print(f"   └─ Gate Decision: {evidence.get('gate_decision')}")
+
+    print(f"\n📈 Retrieval Audit:")
+    print(f"   ├─ Retrieval Count: {response.get('retrieval_count')}")
+    print(f"   ├─ Unique Interview Count: {response.get('unique_interviews')}")
+    print(f"   └─ Similarity Scores: {response.get('similarity_scores')}")
     
     print(f"\n✅ Validation Results (Auditable Proof):")
     validation_icon = '✅' if validation.get('passed') else '❌'
@@ -299,9 +367,16 @@ def print_response_summary(response, case_type):
     downgrade_icon = '🔻' if validation.get('auto_downgrade_applied') else '✅'
     print(f"   └─ Auto-Downgrade: {downgrade_text} {downgrade_icon}")
     
-    print(f"\n📖 Citations: {len(response.get('sources', []))} sources")
-    for i, source in enumerate(response.get('sources', []), 1):
-        print(f"   {i}. {source.get('executive_name')} (score: {source.get('similarity_score', 0):.3f})")
+    print(f"\n📖 Source References: {len(sources)} sources")
+    for i, source in enumerate(sources, 1):
+        print(
+            f"   {i}. {source.get('executive_name')} | "
+            f"{source.get('interview_id')} | {source.get('chunk_id')} | "
+            f"score={source.get('similarity_score', 0):.3f}"
+        )
+
+    print(f"\n📝 Final Response Returned:")
+    print(f"   {final_response}")
 
 def show_json_comparison():
     """Show clean JSON comparison of all three cases."""
